@@ -47,19 +47,19 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     // MARK: - Essentials
     
     /// Shared notification handler
-    static var shared = VMNotificationHandler()
+    public static var shared = VMNotificationHandler()
     
     /// Current notification center
-    static var notificationCenter: UNUserNotificationCenter { UNUserNotificationCenter.current() }
-    var notificationCenter: UNUserNotificationCenter { UNUserNotificationCenter.current() }
+    public static var notificationCenter: UNUserNotificationCenter { UNUserNotificationCenter.current() }
+    public var notificationCenter: UNUserNotificationCenter { UNUserNotificationCenter.current() }
     
     static let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Notifications")
-    typealias NotificationIdentifier = String
+    public typealias NotificationIdentifier = String
     
     // MARK: Authorization Status
     
     /// The current notification scheduling authorization status
-    @MainActor @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @MainActor @Published public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     
     /// Internal-usage boolean to suppress the animation on the first
     /// `authorizationStatus` property update
@@ -70,7 +70,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     ///
     /// - Note: The monitoring is made by observing the application's
     /// `willEnterForegroundNotification` and refreshing the status.
-    @MainActor @Published var shouldMonitorAuthorizationStatus = true {
+    @MainActor @Published public var shouldMonitorAuthorizationStatus = true {
         didSet {
             willEnterForegroundMonitorTask?.cancel()
             
@@ -105,7 +105,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     
     // MARK: Authorization
     
-    func requestAuthorization() async {
+    public func requestAuthorization() async {
         do {
             let options: UNAuthorizationOptions = [.alert, .badge, .sound]
             try await Self.notificationCenter.requestAuthorization(options: options)
@@ -119,7 +119,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     /// Gets the current authorization status, updates the ``authorizationStatus``
     /// property and returns it.
     @discardableResult
-    func updateAuthorizationStatus() async -> UNAuthorizationStatus {
+    public func updateAuthorizationStatus() async -> UNAuthorizationStatus {
         let settings = await Self.notificationCenter.notificationSettings()
         
         await MainActor.run {
@@ -176,7 +176,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     /// - Returns: If the schedule is successful, it returns the scheduled
     ///            notification identifier.
     @discardableResult
-    func scheduleNotification(
+    public func scheduleNotification(
         identifier: NotificationIdentifier? = nil,
         title: String,
         subtitle: String? = nil,
@@ -283,11 +283,11 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     }
 }
     
-    // MARK: - Utilities
+// MARK: - Utilities
     
 extension VMNotificationHandler {
     
-    func getPendingNotification(withIdentifier identifier: NotificationIdentifier) async -> UNNotificationRequest? {
+    public func getPendingNotification(withIdentifier identifier: NotificationIdentifier) async -> UNNotificationRequest? {
         let pendingRequests = await Self.notificationCenter.pendingNotificationRequests()
         
         if let referredNotificationRequest = pendingRequests.first(where: { $0.identifier == identifier }) {
