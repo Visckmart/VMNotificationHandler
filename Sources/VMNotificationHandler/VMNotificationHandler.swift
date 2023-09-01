@@ -4,9 +4,12 @@
 //  Created by Victor Martins on 29/10/22.
 //
 
+// TODO: Send the new features to the package, remove this file and use it as a package
+
 import Foundation
 import UserNotifications
 import SwiftUI
+import OSLog
 
 /// Notification handler provides a layer of abstraction into managing
 /// notifications in your app.
@@ -68,7 +71,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     private var willEnterForegroundMonitorTask: Task<(), Never>?
     
     /// Current notification center
-    var notificationCenter: UNUserNotificationCenter {
+    static var notificationCenter: UNUserNotificationCenter {
         return UNUserNotificationCenter.current()
     }
     
@@ -76,7 +79,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         super.init()
         
         // Setting up the delegate
-        self.notificationCenter.delegate = self
+        Self.notificationCenter.delegate = self
         
         // Setting up the monitoring, if needed
         Task {
@@ -94,7 +97,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     func requestAuthorization() async {
         do {
             let options: UNAuthorizationOptions = [.alert, .badge, .sound]
-            try await self.notificationCenter.requestAuthorization(options: options)
+            try await Self.notificationCenter.requestAuthorization(options: options)
             await self.updateAuthorizationStatus()
         } catch {
             assertionFailure("Notification authorization request error \(error)")
@@ -106,7 +109,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     /// property and returns it.
     @discardableResult
     func updateAuthorizationStatus() async -> UNAuthorizationStatus {
-        let settings = await notificationCenter.notificationSettings()
+        let settings = await Self.notificationCenter.notificationSettings()
         
         await MainActor.run {
             // Update the authorization status property.
@@ -142,7 +145,6 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         }
     }
     
-    
     // MARK: Scheduling Notifications
     
     /// Schedules a local notification with the provided information.
@@ -170,10 +172,11 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         subtitle: String? = nil,
         body: String? = nil,
         silenced: Bool = false,
-        triggerTime: NotificationTime
+        triggerTime: NotificationTime,
+        repeats: Bool = false,
+        userInfo: [AnyHashable: Any] = [:]
     ) async throws -> String {
         guard title.isEmpty == false
-                //                && subtitle == nil || subtitle?.isEmpty == false
                 && triggerTime.isValid()
         else {
             assertionFailure("Identifier: \(identifier.debugDescription) Title: \(title.debugDescription) Trigger: \(triggerTime)")
@@ -182,7 +185,9 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         
         await requestAuthorization()
         guard await authorizationStatus == .authorized else {
-            throw SchedulingError.notAuthorized
+            let error: SchedulingError = .notAuthorized
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
         }
         
         // Preparing the notification content
@@ -194,6 +199,9 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         if let body {
             content.body = body
         }
+        if userInfo.isEmpty == false {
+            content.userInfo = userInfo
+        }
         if silenced == false {
             content.sound = UNNotificationSound.default
         }
@@ -202,19 +210,56 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         let request = UNNotificationRequest(
             identifier: identifier,
             content: content,
-            trigger: triggerTime.getNotificationTrigger()
+            trigger: triggerTime.getNotificationTrigger(repeats: repeats)
         )
         
         do {
-            try await notificationCenter.add(request)
+            try await Self.notificationCenter.add(request)
+            return identifier
+        } catch {
+            let error: SchedulingError = .unknown(error)
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
+        }
+    }
+    
+    
+    @discardableResult
+    func rescheduleNotificationRequest(
+        notificationRequest: UNNotificationRequest,
+        triggerTime: NotificationTime,
+        repeats: Bool = false
+    ) async throws -> String {
+        guard notificationRequest.content.title.isEmpty == false
+                && triggerTime.isValid()
+        else {
+            assertionFailure("Identifier: \(notificationRequest.identifier.debugDescription) Title: \(notificationRequest.content.title.debugDescription) Trigger: \(triggerTime)")
+            throw SchedulingError.invalidContent
+        }
+        
+        await requestAuthorization()
+        guard await authorizationStatus == .authorized else {
+            throw SchedulingError.notAuthorized
+        }
+        
+        // Preparing the notification content
+        let content = notificationRequest.content
+        
+        let identifier = notificationRequest.identifier
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: triggerTime.getNotificationTrigger(repeats: repeats)
+        )
+        
+        do {
+            try await Self.notificationCenter.add(request)
             return identifier
         } catch {
             print("Error creating notification \(error)")
             throw SchedulingError.unknown(error)
         }
     }
-    
-    
     // MARK: Removing notifications
     
     /// Removes multiple notifications via their identifiers.
@@ -225,9 +270,120 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     ///                    have not yet been delivered should also be removed.
     func removeNotifications(withIdentifiers identifiers: [String],
                              evenIfPending: Bool = true) {
-        self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+        Self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
         if evenIfPending {
-            self.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+            Self.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
+        }
+    }
+    
+    static let logger = Logger(subsystem: "com.visckmart.TemplatesAndSnippetsPlayground", category: "Notifications")
+    
+    private static func errorMessage(for error: SchedulingError) -> String {
+        return "\(error.localizedDescription) \(error.recoverySuggestion?.description ?? "")"
+    }
+    
+    
+    
+    @discardableResult
+    func update(
+        withIdentifier identifier: String,
+        newTitle title: String? = nil,
+        newSubtitle subtitle: String? = nil,
+        newBody body: String? = nil,
+        silenced: Bool? = nil,
+        newTriggerTime: Date? = nil,
+        newUserInfo userInfo: [AnyHashable: Any]? = nil
+    ) async throws -> String {
+        let pendingRequests = await Self.notificationCenter.pendingNotificationRequests()
+        
+        guard let referredNotificationRequest = pendingRequests.first(where: { $0.identifier == identifier }) else {
+            let error: SchedulingError = .invalidTriggerForUpdate
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
+        }
+        
+        return try await self.update(
+            notificationRequest: referredNotificationRequest,
+            newTitle: title,
+            newSubtitle: subtitle ,
+            newBody: body,
+            silenced: silenced,
+            newTriggerTime: newTriggerTime,
+            newUserInfo: userInfo
+        )
+    }
+    
+    @discardableResult
+    func update(
+        notificationRequest: UNNotificationRequest,
+        newTitle title: String? = nil,
+        newSubtitle subtitle: String? = nil,
+        newBody body: String? = nil,
+        silenced: Bool? = nil,
+        newTriggerTime: Date? = nil,
+        newUserInfo userInfo: [AnyHashable: Any]? = nil
+    ) async throws -> String {
+        
+        Self.logger.debug("Update notification request \(notificationRequest.identifier)")
+        
+        let trigger: UNCalendarNotificationTrigger
+        if let newTriggerTime {
+            trigger = UNCalendarNotificationTrigger(fromSpecificDate: newTriggerTime)
+        } else if let currentCalendarTrigger = notificationRequest.trigger as? UNCalendarNotificationTrigger {
+            trigger = currentCalendarTrigger
+        } else {
+            let error: SchedulingError = .invalidTriggerForUpdate
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
+        }
+        
+        await requestAuthorization()
+        guard await authorizationStatus == .authorized else {
+            let error: SchedulingError = .notAuthorized
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
+        }
+        
+        // Preparing the notification content
+        guard let content = notificationRequest.content.mutableCopy() as? UNMutableNotificationContent else {
+            let error: SchedulingError = .invalidContent
+            Self.logger.error("\(Self.errorMessage(for: error))")
+            throw error
+        }
+        
+        if let title {
+            guard title.isEmpty == false else {
+                let error: SchedulingError = .invalidTitle
+                Self.logger.error("\(Self.errorMessage(for: error))")
+                throw error
+            }
+            content.title = title
+        }
+        if let subtitle {
+            content.subtitle = subtitle
+        }
+        if let body {
+            content.body = body
+        }
+        if let silenced {
+            content.sound = silenced ? nil : UNNotificationSound.default
+        }
+        if let userInfo {
+            content.userInfo = userInfo
+        }
+        
+        let request = UNNotificationRequest(
+            identifier: notificationRequest.identifier,
+            content: content,
+            trigger: trigger
+        )
+        
+        do {
+            try await Self.notificationCenter.add(request)
+            return notificationRequest.identifier
+        } catch {
+            print("Error creating notification \(error)")
+            throw SchedulingError.unknown(error)
         }
     }
     
@@ -245,12 +401,12 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     
     /// Removes all delivered notifications.
     func removeAllDeliveredNotifications() {
-        self.notificationCenter.removeAllDeliveredNotifications()
+        Self.notificationCenter.removeAllDeliveredNotifications()
     }
     
     /// Removes all pending notifications.
     func removeAllPendingNotifications() {
-        self.notificationCenter.removeAllPendingNotificationRequests()
+        Self.notificationCenter.removeAllPendingNotificationRequests()
     }
     
     /// Removes all notifications, both delivered and pending.
@@ -259,7 +415,6 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         self.removeAllPendingNotifications()
     }
 }
-
 
 // MARK: - Notification Time
 extension VMNotificationHandler {
@@ -275,28 +430,38 @@ extension VMNotificationHandler {
                 let isValid = timeInterval > 0
                 assert(isValid, "Time interval must be greater than 0")
                 return isValid
-            case .at(_):
+            case .at:
                 return true
             }
         }
         
-        func getNotificationTrigger() -> UNNotificationTrigger {
+        func getNotificationTrigger(repeats: Bool = false) -> UNNotificationTrigger {
             switch self {
             case .after(let timeInterval):
                 return UNTimeIntervalNotificationTrigger(
                     timeInterval: timeInterval,
-                    repeats: false
+                    repeats: repeats
                 )
             case .at(let date):
                 let components = Calendar.current.dateComponents(
                     [.year, .month, .day, .hour, .minute, .second, .nanosecond],
                     from: date)
                 return UNCalendarNotificationTrigger(dateMatching: components,
-                                                     repeats: false)
+                                                     repeats: repeats)
             }
         }
     }
     
+}
+
+extension UNCalendarNotificationTrigger {
+    convenience init(fromSpecificDate date: Date) {
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second, .nanosecond],
+            from: date
+        )
+        self.init(dateMatching: components, repeats: false)
+    }
 }
 
 // MARK: - Scheduling Error
@@ -304,15 +469,21 @@ extension VMNotificationHandler {
     
     enum SchedulingError: Error, LocalizedError {
         case notAuthorized
+        case invalidTitle
         case invalidContent
-        case unknown(Error)
+        case invalidTriggerForUpdate
+        case unknown(any Error)
         
         var errorDescription: String? {
             switch self {
             case .notAuthorized:
                 return "Not authorized to send notifications."
+            case .invalidTitle:
+                return "The requested notification title cannot be empty."
             case .invalidContent:
                 return "The requested notification content is not valid."
+            case .invalidTriggerForUpdate:
+                return "A new date or a calendar trigger must originally be set on the notification request to allow for updates."
             case .unknown(let error):
                 return "An unknown error ocurred while trying to schedule the notification. \(error)"
             }
@@ -322,9 +493,13 @@ extension VMNotificationHandler {
             switch self {
             case .notAuthorized:
                 return "Try checking the app's current notification authorization status."
+            case .invalidTitle:
+                return "Use a non-empty title. If you are updating a notification content, pass a nil value to keep the original."
             case .invalidContent:
                 return "Check if the title is not empty and the trigger is in the future."
-            case .unknown(_):
+            case .invalidTriggerForUpdate:
+                return "Make sure these requirements are being fulfilled."
+            case .unknown:
                 return nil
             }
             
@@ -342,19 +517,12 @@ extension VMNotificationHandler: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        //        let notificationData = notification.request.content.userInfo
+        //        print(notificationData)
         // Shows the notification even on the foreground
         return [.badge, .sound, .banner, .list]
     }
     
-    /// Asks the delegate to process the user's response to a delivered notification.
-    /*
-     func userNotificationCenter(
-     _ center: UNUserNotificationCenter,
-     didReceive response: UNNotificationResponse
-     ) async {
-     /*@START_MENU_TOKEN@*//*@PLACEHOLDER=...@*//*@END_MENU_TOKEN@*/
-     }
-     */
 }
 
 // MARK: - Debugging extensions
@@ -369,5 +537,21 @@ extension UNAuthorizationStatus: CustomDebugStringConvertible {
         case .ephemeral: return "ephemeral"
         @unknown default: return "unable to provide a description"
         }
+    }
+}
+
+extension VMNotificationHandler {
+    func getAllNotifications() async -> [UNNotificationRequest] {
+        var nofitications: [UNNotificationRequest] = []
+        
+        let requests = await Self.notificationCenter.pendingNotificationRequests()
+        print("Pending notifications:")
+        for request in requests {
+            print(request.content.title)
+            nofitications.append(request)
+        }
+        
+        return nofitications
+        
     }
 }
