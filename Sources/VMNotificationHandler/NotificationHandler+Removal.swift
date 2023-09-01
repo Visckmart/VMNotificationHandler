@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: Remove
 
-extension VMNotificationHandler {
+public extension VMNotificationHandler {
     
     // MARK: Specific
     
