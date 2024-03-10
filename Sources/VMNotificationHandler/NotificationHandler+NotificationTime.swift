@@ -13,9 +13,12 @@ import UserNotifications
 public extension VMNotificationHandler {
     
     enum NotificationTime {
+        /// Waits for the specified TimeInterval
         case after(TimeInterval)
+        /// Waits for the specified date
         case at(Date)
-//        case around(DateComponents)
+        /// Schedules immediately
+        public static var now: NotificationTime { NotificationTime.after(0.1) }
         
         func isValid() -> Bool {
             switch self {
@@ -30,9 +33,14 @@ public extension VMNotificationHandler {
         
         func getNotificationTrigger(repeats: Bool = false) -> UNNotificationTrigger {
             switch self {
-            case .after(let timeInterval):
+            case .after(let timeInterval) where timeInterval > 0:
+                
                 return UNTimeIntervalNotificationTrigger(timeInterval: timeInterval,
                                                          repeats: repeats)
+            case .after:
+                let soon = Date.now.addingTimeInterval(0.1)
+                return NotificationTime.at(soon).getNotificationTrigger()
+            
             case .at(let date):
                 let components = Calendar.current.dateComponents(
                     [.year, .month, .day, .hour, .minute, .second, .nanosecond],
