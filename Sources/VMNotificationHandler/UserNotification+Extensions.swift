@@ -10,8 +10,10 @@ import UserNotifications
 
 extension UNCalendarNotificationTrigger {
     convenience init(fromSpecificDate date: Date) {
-        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond],
-                                                         from: date)
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second, .nanosecond],
+            from: date
+        )
         self.init(dateMatching: components, repeats: false)
     }
 }
@@ -24,7 +26,7 @@ extension UNAuthorizationStatus: CustomDebugStringConvertible {
         case .authorized: return "authorized"
         case .provisional: return "provisional"
         case .ephemeral: return "ephemeral"
-        @unknown default: return "unable to provide a description"
+        @unknown default: return "unknown authorization status"
         }
     }
 }
