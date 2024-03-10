@@ -42,12 +42,13 @@ import OSLog
 /// - Author: Victor Martins
 /// - Date: 2023-09-01
 /// - Version: 1.1
+@MainActor
 public class VMNotificationHandler: NSObject, ObservableObject {
     
     // MARK: - Essentials
     
     /// Shared notification handler
-    public static var shared = VMNotificationHandler()
+    @MainActor public static var shared = VMNotificationHandler()
     
     /// Current notification center
     public static var notificationCenter: UNUserNotificationCenter { UNUserNotificationCenter.current() }
@@ -59,7 +60,8 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     // MARK: Authorization Status
     
     /// The current notification scheduling authorization status
-    @MainActor @Published public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @MainActor @Published
+    public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     
     /// Internal-usage boolean to suppress the animation on the first
     /// `authorizationStatus` property update
@@ -94,7 +96,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         
         // Setting up the monitoring, if needed
         Task {
-            if await shouldMonitorAuthorizationStatus {
+            if shouldMonitorAuthorizationStatus {
                 self.willEnterForegroundMonitorTask = self.monitorAuthorizationStatus()
             }
         }
@@ -147,9 +149,11 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     private func monitorAuthorizationStatus() -> Task<Void, Never> {
         return Task {
             await updateAuthorizationStatus()
-            for await _ in await NotificationCenter.default.notifications(
+            
+            let willEnterForegroundNotifications = NotificationCenter.default.notifications(
                 named: UIApplication.willEnterForegroundNotification
-            ) {
+            ).map { _ in () }
+            for await _ in willEnterForegroundNotifications {
                 await updateAuthorizationStatus()
             }
         }
@@ -213,7 +217,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         
         // Checking for notification permissions
         await requestAuthorization()
-        guard await authorizationStatus == .authorized else {
+        guard authorizationStatus == .authorized else {
             let error: SchedulingError = .notAuthorized
             Self.logger.error("\(Self.errorMessage(for: error))")
             throw error
@@ -282,9 +286,9 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         }
     }
 }
-    
+
 // MARK: - Utilities
-    
+
 extension VMNotificationHandler {
     
     public func getPendingNotification(withIdentifier identifier: NotificationIdentifier) async -> UNNotificationRequest? {

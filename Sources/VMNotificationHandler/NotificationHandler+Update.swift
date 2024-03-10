@@ -62,7 +62,7 @@ public extension VMNotificationHandler {
         
         // Checking for notification permissions
         await requestAuthorization()
-        guard await authorizationStatus == .authorized else {
+        guard authorizationStatus == .authorized else {
             let error: SchedulingError = .notAuthorized
             Self.logger.error("\(Self.errorMessage(for: error))")
             throw error
