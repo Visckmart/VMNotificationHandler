@@ -91,14 +91,14 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     private override init() {
         super.init()
         
-        // Setting up the delegate
-        Self.notificationCenter.delegate = self
+        // Setting up the delegate, if no delegate has been set up earlier
+        if Self.notificationCenter.delegate == nil {
+            Self.notificationCenter.delegate = self
+        }
         
         // Setting up the monitoring, if needed
-        Task {
-            if shouldMonitorAuthorizationStatus {
-                self.willEnterForegroundMonitorTask = self.monitorAuthorizationStatus()
-            }
+        if shouldMonitorAuthorizationStatus {
+            self.willEnterForegroundMonitorTask = self.monitorAuthorizationStatus()
         }
         
         // Updating the authorization status for the first time
@@ -312,6 +312,7 @@ extension VMNotificationHandler: UNUserNotificationCenterDelegate {
     
     /// Asks the delegate how to handle a notification that arrived while the app
     /// was running in the foreground.
+    @MainActor
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
