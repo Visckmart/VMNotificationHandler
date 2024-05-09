@@ -115,14 +115,15 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     
     // MARK: Authorization
     
-    public func requestAuthorization() async {
+    public func requestAuthorization() async -> UNAuthorizationStatus {
         do {
             let options: UNAuthorizationOptions = [.alert, .badge, .sound]
             try await Self.notificationCenter.requestAuthorization(options: options)
-            await self.updateAuthorizationStatus()
+            return await self.updateAuthorizationStatus()
         } catch {
-            assertionFailure("Notification authorization request error \(error)")
-            print("Notification authorization request error \(error)")
+            assertionFailure("Notification authorization request error \(Self.errorMessage(for: error))")
+            Self.logger.error("Notification authorization request error \(Self.errorMessage(for: error))")
+            return self.authorizationStatus
         }
     }
     
@@ -195,7 +196,6 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         body: String? = nil,
         silenced: Bool = false,
         triggerTime: NotificationTime,
-        repeats: Bool = false,
         userInfo: [AnyHashable: Any] = [:]
     ) async throws -> NotificationIdentifier {
         
@@ -220,7 +220,7 @@ public class VMNotificationHandler: NSObject, ObservableObject {
         let request = UNNotificationRequest(
             identifier: identifier,
             content: content,
-            trigger: triggerTime.getNotificationTrigger(repeats: repeats)
+            trigger: triggerTime.getNotificationTrigger()
         )
         
         // Checking for notification permissions
@@ -299,7 +299,9 @@ public class VMNotificationHandler: NSObject, ObservableObject {
 
 extension VMNotificationHandler {
     
-    public func getPendingNotification(withIdentifier identifier: NotificationIdentifier) async -> UNNotificationRequest? {
+    public func getPendingNotification(
+        withIdentifier identifier: NotificationIdentifier
+    ) async -> UNNotificationRequest? {
         let pendingRequests = await Self.notificationCenter.pendingNotificationRequests()
         
         if let referredNotificationRequest = pendingRequests.first(where: { $0.identifier == identifier }) {
@@ -309,8 +311,13 @@ extension VMNotificationHandler {
         return nil
     }
     
-    static func errorMessage(for error: SchedulingError) -> String {
-        return "\(error.localizedDescription) \(error.recoverySuggestion?.description ?? "")"
+    static func errorMessage(for error: Error) -> String {
+        let recoverySuggestion = (error as? LocalizedError)?.recoverySuggestion
+        var recoverySuggestionDesc = ""
+        if let recoverySuggestion {
+            recoverySuggestionDesc = " \(recoverySuggestion)"
+        }
+        return "\(error.localizedDescription)\(recoverySuggestionDesc)"
     }
     
 }

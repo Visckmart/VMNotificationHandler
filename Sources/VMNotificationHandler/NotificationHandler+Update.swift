@@ -72,7 +72,7 @@ public extension VMNotificationHandler {
             try await Self.notificationCenter.add(request)
             return notificationRequest.identifier
         } catch {
-            print("Error creating notification \(error)")
+            print("Error creating notification \(Self.errorMessage(for: error))")
             throw SchedulingError.unknown(error)
         }
     }

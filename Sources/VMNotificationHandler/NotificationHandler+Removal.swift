@@ -11,6 +11,18 @@ import Foundation
 
 public extension VMNotificationHandler {
     
+    enum NotificationState {
+        /// Notifications that have already been delivered to the user
+        case delivered
+        
+        /// Notifications that are waiting to be delivered to the user
+        case pending
+        
+        /// Notifications that both have already been delivered and are waiting to be delivered
+        /// to the user
+        case deliveredAndPending
+    }
+    
     // MARK: Specific
     
     /// Removes multiple notifications via their identifiers.
@@ -20,9 +32,11 @@ public extension VMNotificationHandler {
     ///   - evenIfPending: A boolean that specifies whether notifications that
     ///                    have not yet been delivered should also be removed.
     func removeNotifications(withIdentifiers identifiers: [String],
-                             evenIfPending: Bool = true) {
-        Self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
-        if evenIfPending {
+                             from notificationState: NotificationState = .deliveredAndPending) {
+        if notificationState == .delivered || notificationState == .deliveredAndPending {
+            Self.notificationCenter.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+        if notificationState == .pending || notificationState == .deliveredAndPending {
             Self.notificationCenter.removePendingNotificationRequests(withIdentifiers: identifiers)
         }
     }
@@ -34,27 +48,20 @@ public extension VMNotificationHandler {
     ///   - evenIfPending: A boolean that specifies whether the notification
     ///                    should be removed if it hasn't been delivered yet.
     func removeNotification(withIdentifier identifier: String,
-                            evenIfPending: Bool = true) {
-        self.removeNotifications(withIdentifiers: [identifier],
-                                 evenIfPending: evenIfPending)
+                            from notificationState: NotificationState = .deliveredAndPending) {
+        self.removeNotifications(withIdentifiers: [identifier], from: notificationState)
     }
     
     
     // MARK: Generic
     
-    /// Removes all delivered notifications.
-    func removeAllDeliveredNotifications() {
-        Self.notificationCenter.removeAllDeliveredNotifications()
-    }
-    
-    /// Removes all pending notifications.
-    func removeAllPendingNotifications() {
-        Self.notificationCenter.removeAllPendingNotificationRequests()
-    }
-    
     /// Removes all notifications, both delivered and pending.
-    func removeAllNotifications() {
-        self.removeAllDeliveredNotifications()
-        self.removeAllPendingNotifications()
+    func removeAllNotifications(from notificationState: NotificationState) {
+        if notificationState == .delivered || notificationState == .deliveredAndPending {
+            Self.notificationCenter.removeAllDeliveredNotifications()
+        }
+        if notificationState == .pending || notificationState == .deliveredAndPending {
+            Self.notificationCenter.removeAllPendingNotificationRequests()
+        }
     }
 }
