@@ -38,10 +38,14 @@ import OSLog
 ///           that makes the current `UNUserNotificationCenter` instance available.
 /// - Remark: The `authorizationStatus` and `shouldMonitorAuthorizationStatus` properties
 ///           are `@Published` and their changes can be observed.
+/// - Remark: By default, when the handler is initialized, a default delegate is set as the
+///           `UNUserNotificationCenter.current().delegate` unless any delegate is set before the
+///           handler initialized. This default delegate shows notifications even when the app is in
+///           the foreground.
 ///
 /// - Author: Victor Martins
 /// - Date: 2023-09-01
-/// - Version: 1.1
+/// - Version: 1.2.1
 @MainActor
 public class VMNotificationHandler: NSObject, ObservableObject {
     
