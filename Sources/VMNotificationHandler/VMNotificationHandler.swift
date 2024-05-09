@@ -64,6 +64,10 @@ public class VMNotificationHandler: NSObject, ObservableObject {
     // MARK: Authorization Status
     
     /// The current notification scheduling authorization status
+    ///
+    /// To allow this property to update the interface automatically you must observe the `shared`
+    /// instance via `@ObservedObject var notificationHandler = VMNotificationHandler.shared` and
+    /// reference it using this property, like `notificationHandler.authorizationStatus`.
     @MainActor @Published
     public private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
     
